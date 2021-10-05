@@ -45,6 +45,7 @@ struct z_nrf_rtc_timer_chan_data {
 static struct z_nrf_rtc_timer_chan_data cc_data[CHAN_COUNT];
 static uint32_t int_mask;
 static atomic_t alloc_mask;
+static bool overflow_int;
 
 static volatile uint32_t m_overflow_cnt;
 static volatile uint8_t m_mutex;
@@ -281,6 +282,40 @@ void z_nrf_rtc_timer_compare_int_unlock(int32_t chan, bool key)
 		__set_PRIMASK(mcu_critical_state);
 
 		nrf_rtc_int_enable(RTC, RTC_CHANNEL_INT_MASK(chan));
+	}
+}
+
+bool z_nrf_rtc_timer_overflow_int_lock(void)
+{
+	bool prev;
+	uint32_t mcu_critical_state;
+
+	mcu_critical_state = __get_PRIMASK();
+	__disable_irq();
+
+	prev = overflow_int;
+	overflow_int = false;
+
+	__set_PRIMASK(mcu_critical_state);
+
+	nrf_rtc_int_disable(RTC, NRF_RTC_INT_OVERFLOW_MASK);
+
+	return prev;
+}
+
+void z_nrf_rtc_timer_overflow_int_unlock(bool key)
+{
+	if (key) {
+		uint32_t mcu_critical_state;
+
+		mcu_critical_state = __get_PRIMASK();
+		__disable_irq();
+
+		overflow_int = true;
+
+		__set_PRIMASK(mcu_critical_state);
+
+		nrf_rtc_int_enable(RTC, NRF_RTC_INT_OVERFLOW_MASK);
 	}
 }
 
@@ -524,6 +559,9 @@ int sys_clock_driver_init(const struct device *dev)
 	for (int32_t chan = 0; chan < CHAN_COUNT; chan++) {
 		nrf_rtc_int_enable(RTC, RTC_CHANNEL_INT_MASK(chan));
 	}
+
+	nrf_rtc_int_enable(RTC, NRF_RTC_INT_OVERFLOW_MASK);
+	overflow_int = true;
 
 	NVIC_ClearPendingIRQ(RTC_IRQn);
 
