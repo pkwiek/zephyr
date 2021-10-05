@@ -26,19 +26,33 @@ static uint64_t m_last_scheduled_time;
  */
 void rtc_irq_handler(int32_t id, uint64_t target_time, void *user_data)
 {
-	(void)user_data;
-
++	(void)user_data;
++
+/*-------------------------
+ * przerwanie na wysokim priorytecie, wpada tutaj i scheduluje nowego heada albo coś
+ * zaraz po headzie, jeżeli obsługa była spóźniona; wpisuje m_is_running = true;
+ *-------------------------
+ */
 	assert(id == m_rtc_channel);
 
 	bool was_running;
 
 	was_running = m_is_running;
 	m_is_running = false;
+	/* m_is_running jest nadpisany, jest false i nie oczekujemy kolejnego
+	 * przerwania, ale jesteśmy w kontekście przerwania od RTC, więc nowe
+	 * nam nie grozi
+	 */
 
 	__DMB();
 
-	if (was_running) {
+	if (was_running) {    /* was_running == true */
 		nrf_802154_sl_timer_handler(target_time);
+		/* handler przetwarza listę i przetwarza
+		 * element, który jest "due", a scheduluje nowy element, jeżeli coś jest do
+		 * schedulowania, co ustawia ponownie m_is_running = true; a jeżeli nic nie ma to
+		 * m_is_running zostaje na false
+		 */
 	}
 }
 
